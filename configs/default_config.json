@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "gui": {
+    "theme": "light",
+    "accent": "#1a6fd4",
+    "font_scale": 1.0,
+    "window": {
+      "width": 1480,
+      "height": 920
+    },
+    "show_log_panel": true,
+    "auto_preview": true
+  },
+  "output": {
+    "root": "results",
+    "group_by_date": true,
+    "group_by_algorithm": true,
+    "format": "png",
+    "jpeg_quality": 95,
+    "save_comparison": true
+  },
+  "logging": {
+    "level": "INFO",
+    "max_mb": 2,
+    "backup_count": 5
+  },
+  "performance": {
+    "auto_tiling": true,
+    "tile_threshold_mp": 12.0,
+    "tile_size": 1024,
+    "tile_overlap": 32
+  },
+  "evaluation": {
+    "metric_reference": "auto",
+    "auto_reference_scale": 2,
+    "psnr_peak": 255.0
+  },
+  "algorithms": {
+    "nearest": {},
+    "bilinear": {},
+    "bicubic": {
+      "a": -0.75
+    },
+    "lanczos": {
+      "a": 3
+    },
+    "area": {},
+    "nedi": {
+      "window": 8,
+      "sharpen": 0.0,
+      "strength": 0.35
+    },
+    "guided": {
+      "radius": 8,
+      "eps": 0.0001,
+      "detail_gain": 0.85,
+      "prefilter": "cubic"
+    },
+    "onnx": {
+      "model": "auto",
+      "tile": 256,
+      "overlap": 16,
+      "fallback": "bicubic"
+    }
+  }
+}

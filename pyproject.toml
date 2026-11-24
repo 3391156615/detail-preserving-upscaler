@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ipscaling"
+version = "1.0.0"
+description = "细节保持的图像插值/缩放系统 — Detail-Preserving Image Upscaling System"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Digital Image Processing Course Project" }]
+keywords = ["image", "super-resolution", "interpolation", "NEDI", "guided-filter", "ONNX"]
+
+dependencies = [
+    "numpy>=1.26.0,<3.0.0",
+    "opencv-python-headless>=4.9.0.80",
+    "PyQt5>=5.15.10",
+    "onnxruntime>=1.17.0",
+    "scipy>=1.11.0",
+    "scikit-image>=0.22.0",
+    "Pillow>=10.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "onnx>=1.15.0"]
+
+[project.scripts]
+ipscaling = "app:main"
+
+[tool.setuptools]
+packages = ["ipscaling", "ipscaling.engine", "ipscaling.gui", "ipscaling.utils"]
+py-modules = ["app", "bootstrap"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

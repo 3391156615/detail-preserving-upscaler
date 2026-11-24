@@ -1,0 +1,192 @@
+{
+  "name": "Detail-Preserving Image Upscaling System",
+  "package": "ipscaling",
+  "version": "1.0.0",
+  "built_at": "2026-11-23 22:14:30",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.10",
+  "entrypoint": {
+    "double_click": "Start.cmd",
+    "launcher": "launcher.ps1",
+    "environment_setup": "setup.ps1",
+    "gui_main": "app.py",
+    "bootstrap": "bootstrap.py",
+    "environment_lock": ".setup.lock"
+  },
+  "algorithms": [
+    {
+      "key": "nearest",
+      "display_name": "最近邻 (Nearest)",
+      "category": "baseline",
+      "supports_upscale": true,
+      "supports_downscale": false,
+      "integer_scales": "any",
+      "arbitrary_scale": true,
+      "internal_tiling": false,
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "key": "bilinear",
+      "display_name": "双线性 (Bilinear)",
+      "category": "baseline",
+      "supports_upscale": true,
+      "supports_downscale": true,
+      "integer_scales": "any",
+      "arbitrary_scale": true,
+      "internal_tiling": false,
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "key": "bicubic",
+      "display_name": "双三次 (Bicubic)",
+      "category": "baseline",
+      "supports_upscale": true,
+      "supports_downscale": true,
+      "integer_scales": "any",
+      "arbitrary_scale": true,
+      "internal_tiling": false,
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "key": "lanczos",
+      "display_name": "Lanczos",
+      "category": "baseline",
+      "supports_upscale": true,
+      "supports_downscale": true,
+      "integer_scales": "any",
+      "arbitrary_scale": true,
+      "internal_tiling": false,
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "key": "area",
+      "display_name": "区域平均 (Area)",
+      "category": "baseline",
+      "supports_upscale": false,
+      "supports_downscale": true,
+      "integer_scales": "any",
+      "arbitrary_scale": true,
+      "internal_tiling": false,
+      "available": false,
+      "unavailable_reason": "区域平均 (Area) 不支持放大"
+    },
+    {
+      "key": "nedi",
+      "display_name": "NEDI 边缘导向",
+      "category": "edge",
+      "supports_upscale": true,
+      "supports_downscale": false,
+      "integer_scales": [
+        2,
+        3,
+        4,
+        6,
+        8
+      ],
+      "arbitrary_scale": false,
+      "internal_tiling": false,
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "key": "guided",
+      "display_name": "引导滤波上采样",
+      "category": "edge",
+      "supports_upscale": true,
+      "supports_downscale": true,
+      "integer_scales": "any",
+      "arbitrary_scale": true,
+      "internal_tiling": false,
+      "available": true,
+      "unavailable_reason": ""
+    },
+    {
+      "key": "onnx",
+      "display_name": "深度学习超分 (ONNX)",
+      "category": "deep",
+      "supports_upscale": true,
+      "supports_downscale": false,
+      "integer_scales": [
+        2,
+        3,
+        4
+      ],
+      "arbitrary_scale": false,
+      "internal_tiling": true,
+      "available": true,
+      "unavailable_reason": ""
+    }
+  ],
+  "models": [
+    {
+      "file": "espcn_x2.onnx",
+      "scale": 2,
+      "family": "ResizeConv-SR",
+      "params": 75,
+      "size_kb": 1.5,
+      "sha256_head": "b18b780a58a7bace",
+      "description": "2× 上采样：双三次相位插值 + 5×5 最小二乘细节核"
+    },
+    {
+      "file": "espcn_x3.onnx",
+      "scale": 3,
+      "family": "ResizeConv-SR",
+      "params": 75,
+      "size_kb": 1.5,
+      "sha256_head": "2730e30d771daca4",
+      "description": "3× 上采样：双三次相位插值 + 5×5 最小二乘细节核"
+    },
+    {
+      "file": "espcn_x4.onnx",
+      "scale": 4,
+      "family": "ResizeConv-SR",
+      "params": 75,
+      "size_kb": 1.5,
+      "sha256_head": "f27ebd80ef74433a",
+      "description": "4× 上采样：双三次相位插值 + 5×5 最小二乘细节核"
+    }
+  ],
+  "dependencies": {
+    "numpy": "2.5.5",
+    "opencv-python-headless": "5.1.0.95",
+    "PyQt5": "5.15.11",
+    "onnxruntime": "1.32.0",
+    "scipy": "1.18.1",
+    "scikit-image": "0.26.0",
+    "pillow": "13.0.0"
+  },
+  "directories": [
+    "ipscaling/engine",
+    "ipscaling/gui",
+    "ipscaling/utils",
+    "configs",
+    "weights",
+    "data",
+    "results",
+    "logs",
+    "dist",
+    "tools",
+    "tests"
+  ],
+  "features": {
+    "zero_config_launch": true,
+    "dark_gui": "PyQt5 浅色主题，左侧参数 / 主体图像对比 / 底部日志与指标页签",
+    "multi_algorithm_compare": true,
+    "batch_processing": true,
+    "auto_tiling": true,
+    "downscale_antialiasing": true,
+    "report_export": [
+      "markdown",
+      "csv",
+      "comparison png"
+    ]
+  },
+  "perf_targets": {
+    "1080p_classic_ms": 2000,
+    "tiling_trigger_mp": 12.0
+  }
+}

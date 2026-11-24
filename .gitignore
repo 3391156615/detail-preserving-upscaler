@@ -1,0 +1,29 @@
+# 运行环境（各机器本地生成，不可迁移）
+.venv/
+venv/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 运行期产物
+results/
+logs/
+data/
+dist/
+delivery/
+temp_pytest/
+*.log
+
+# 本地锁与临时文件
+.setup.lock
+temp_*.txt
+temp_*.log
+
+# 用户本地配置（由 configs/default_config.json 生成）
+configs/user_settings.json
+
+# 系统文件
+Thumbs.db
+desktop.ini
+.DS_Store

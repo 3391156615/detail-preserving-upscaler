@@ -1,0 +1,29 @@
+{
+  "models": {
+    "espcn_x2.onnx": {
+      "scale": 2,
+      "family": "ResizeConv-SR",
+      "params": 75,
+      "size_kb": 1.5,
+      "psnr_gain_over_bicubic_db": 0.302,
+      "description": "2× 上采样：双三次相位插值 + 5×5 最小二乘细节核"
+    },
+    "espcn_x3.onnx": {
+      "scale": 3,
+      "family": "ResizeConv-SR",
+      "params": 75,
+      "size_kb": 1.5,
+      "psnr_gain_over_bicubic_db": 0.071,
+      "description": "3× 上采样：双三次相位插值 + 5×5 最小二乘细节核"
+    },
+    "espcn_x4.onnx": {
+      "scale": 4,
+      "family": "ResizeConv-SR",
+      "params": 75,
+      "size_kb": 1.5,
+      "psnr_gain_over_bicubic_db": 0.103,
+      "description": "4× 上采样：双三次相位插值 + 5×5 最小二乘细节核"
+    }
+  },
+  "note": "权重由内置合成测试图案最小二乘拟合，仅供本系统推理使用。"
+}

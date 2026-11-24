@@ -1,0 +1,4 @@
+# 开发与测试依赖（普通用户无需安装；仅用于跑单元测试与重新生成 ONNX 模型）
+-r requirements.txt
+pytest>=8.0.0
+onnx>=1.15.0

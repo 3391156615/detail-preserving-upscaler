@@ -1,0 +1,9 @@
+# 生产依赖（纯 CPU，全部提供 cp312 win_amd64 预编译 wheel）
+# 说明：本文件仅包含合法的 PEP 508 依赖声明，请勿写入任何说明性正文，否则 pip 解析失败。
+numpy>=1.26.0,<3.0.0
+opencv-python-headless>=4.9.0.80
+PyQt5>=5.15.10
+onnxruntime>=1.17.0
+scipy>=1.11.0
+scikit-image>=0.22.0
+Pillow>=10.2.0

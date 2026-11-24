@@ -104,10 +104,6 @@ class ScalePlan:
         """输出图像的总像素数（百万像素），用于判断是否需要分块处理。"""
         return (self.dst_size[0] * self.dst_size[1]) / 1_000_000.0
 
-    @property
-    def src_megapixels(self) -> float:
-        return (self.src_size[0] * self.src_size[1]) / 1_000_000.0
-
 
 @dataclass
 class ProcessResult:
@@ -127,13 +123,6 @@ class ProcessResult:
     def megapixels(self) -> float:
         w, h = self.plan.dst_size
         return (w * h) / 1e6
-
-    @property
-    def throughput(self) -> float:
-        """有效吞吐（输出百万像素/秒）。"""
-        if self.elapsed_ms <= 1e-6:
-            return float("inf")
-        return self.megapixels / (self.elapsed_ms / 1000.0)
 
 
 class BaseEngine(ABC):
@@ -368,16 +357,3 @@ def prefilter_antialias(image: np.ndarray, scale_x: float, scale_y: float) -> np
         return image
     sigma = float(np.clip(0.5 / max(factor, 1e-3), 0.3, 8.0))
     return cv2.GaussianBlur(image, (0, 0), sigmaX=sigma, sigmaY=sigma, borderType=cv2.BORDER_REFLECT)
-
-
-def preserve_channels(func):
-    """装饰器：自动兼容灰度/彩色（循环通道处理）。"""
-
-    def wrapper(image: np.ndarray, *args, **kwargs):
-        arr = np.asarray(image, dtype=np.float32)
-        if arr.ndim == 3 and arr.shape[2] > 1:
-            planes = [func(arr[:, :, c], *args, **kwargs) for c in range(arr.shape[2])]
-            return np.stack(planes, axis=2)
-        return func(arr, *args, **kwargs)
-
-    return wrapper

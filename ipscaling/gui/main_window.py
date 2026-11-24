@@ -18,8 +18,6 @@ from PyQt5.QtWidgets import (
     QAbstractItemView,
     QAction,
     QDialog,
-    QFileDialog,
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -28,11 +26,12 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QScrollArea,
+    QSizePolicy,
     QSplitter,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -48,23 +47,14 @@ from ipscaling.gui.viewer import (
 from ipscaling.gui.wheel_guard import install_wheel_guard
 from ipscaling.gui.workbench import Workbench
 from ipscaling.utils.archive import load_image, save_image, save_report
-from ipscaling.utils.config import (
-    LOGS_DIR,
-    RESULTS_DIR,
-    Config,
-    default_config,
-    ensure_directories,
-)
+from ipscaling.utils.config import RESULTS_DIR, Config, ensure_directories
 from ipscaling.utils.evaluator import (
     compute_metrics,
-    export_csv,
     make_comparison,
     make_zoom_pair,
-    rows_to_markdown,
 )
 from ipscaling.gui.scale_plan import (
     PSNR_CAP_DB,
-    plan_sizes,
     prepare_inputs,
     preview_input,
     reference_basis,
@@ -81,6 +71,16 @@ class _LogBridge(QObject):
 _log_bridge = _LogBridge()
 
 
+def _get_log_bridge() -> _LogBridge:
+    """取日志桥；QApplication 重建后旧桥可能已被销毁，这里自动重建。"""
+    global _log_bridge
+    try:
+        _log_bridge.message  # 访问已删除的 C++ 对象会抛 RuntimeError
+    except RuntimeError:
+        _log_bridge = _LogBridge()
+    return _log_bridge
+
+
 class _QtLogHandler(logging.Handler):
     """把 ipscaling 日志转发到 GUI 日志面板（线程安全）。"""
 
@@ -92,7 +92,7 @@ class _QtLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            _log_bridge.message.emit(self.format(record))
+            _get_log_bridge().message.emit(self.format(record))
         except Exception:
             pass
 
@@ -108,7 +108,6 @@ class Job:
     strategy: str = "direct"
     params: Dict[str, Any] = field(default_factory=dict)
     save: bool = True
-    compare: bool = False
     run_id: int = 0
 
 
@@ -244,15 +243,13 @@ class MainWindow(QMainWindow):
         self._run_id = 0
         self._compare_phase = False
         self._compare_rows: List[Dict[str, Any]] = []
-        self._compare_jobs_total = 0
-        self._compare_jobs_left = 0
+        self._compare_images: Dict[str, np.ndarray] = {}
 
         self._current_reference: Optional[np.ndarray] = None
         self._reference_kind = "参考基准"
         self._current_result: Optional[np.ndarray] = None
         self._current_source: Optional[np.ndarray] = None
         self._current_path: Optional[str] = None
-        self._last_output: Optional[str] = None
 
         self._build_ui()
         self._build_menus()
@@ -274,6 +271,8 @@ class MainWindow(QMainWindow):
 
         # 中部区域整块用于图像对比展示（原图 / 处理结果）
         center = QWidget()
+        # 向上拖动底部面板时图像区仍保留可用高度，不会被挤成一条缝
+        center.setMinimumHeight(200)
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(6, 6, 6, 6)
         center_layout.setSpacing(4)
@@ -287,22 +286,38 @@ class MainWindow(QMainWindow):
         right_side.setObjectName("rightSideSplitter")
         right_side.addWidget(center)
         right_side.addWidget(self.bottom_tabs)
+        # 窗口变高时新增高度优先给图像区，底部面板保持用户拖出的高度
         right_side.setStretchFactor(0, 4)
-        right_side.setStretchFactor(1, 3)
+        right_side.setStretchFactor(1, 0)
         right_side.setChildrenCollapsible(False)
-        right_side.setSizes([540, 330])
+        right_side.setHandleWidth(6)
+        saved_bottom = int(self.config.get("gui.bottom_height", 330) or 330)
+        saved_bottom = max(self.bottom_tabs.minimumHeight(), min(saved_bottom, 620))
+        right_side.setSizes([540, saved_bottom])
+        self._bottom_height = saved_bottom
+        right_side.splitterMoved.connect(self._remember_bottom_height)
         self.right_splitter = right_side
 
+        # 左侧折叠条：参数面板隐藏后按钮依然可见，点击即可恢复
+        self.left_strip = self._build_sidebar_strip()
+
         splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(self.left_strip)
         splitter.addWidget(self.workbench)
         splitter.addWidget(right_side)
         # 左侧参数栏保持固定观感，其余宽度全部留给图像对比区
         splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(1, 0)
+        splitter.setStretchFactor(2, 1)
         splitter.setChildrenCollapsible(False)
+        splitter.setCollapsible(1, True)  # 允许把参数面板折叠到 0 宽
+        splitter.setHandleWidth(6)
         total = max(self.width(), 960)
         left = max(260, int(total * 0.24))
-        splitter.setSizes([left, max(600, total - left)])
+        strip_w = self.left_strip.width()
+        splitter.setSizes([strip_w, left, max(600, total - strip_w - left)])
+        self._left_width = left
+        self._left_collapsed = False
         self.splitter = splitter
         self.setCentralWidget(splitter)
 
@@ -369,6 +384,8 @@ class MainWindow(QMainWindow):
         """底部页签区：运行日志 / 性能指标与实验报告。"""
         tabs = QTabWidget()
         tabs.setObjectName("bottomTabs")
+        # 下限保证页签与内容仍可阅读，上限随窗口尺寸动态计算
+        tabs.setMinimumHeight(120)
         tabs.setDocumentMode(False)
         tabs.tabBar().setObjectName("bottomTabBar")
         tabs.tabBar().setExpanding(False)
@@ -385,7 +402,6 @@ class MainWindow(QMainWindow):
         self.log_page = log_page
 
         self.metrics_page = self._build_metrics_panel()
-        self.metrics_panel = self.metrics_page
 
         tabs.addTab(log_page, "运行日志")
         tabs.addTab(self.metrics_page, "性能指标与实验报告")
@@ -406,6 +422,105 @@ class MainWindow(QMainWindow):
     def _toggle_bottom_panel(self) -> None:
         """显示/隐藏底部页签区（运行日志 / 性能指标与实验报告）。"""
         self.bottom_tabs.setVisible(not self.bottom_tabs.isVisible())
+
+    # -------------------------------------------------- 可折叠侧边栏 / 可拖面板
+    def _build_sidebar_strip(self) -> QWidget:
+        """左侧极窄竖条：参数面板折叠后按钮仍然可见，用于一键恢复。"""
+        strip = QWidget()
+        strip.setObjectName("sidebarStrip")
+        strip.setFixedWidth(26)
+        strip.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        layout = QVBoxLayout(strip)
+        layout.setContentsMargins(2, 6, 2, 8)
+        layout.setSpacing(8)
+
+        self.btn_sidebar = QToolButton(strip)
+        self.btn_sidebar.setObjectName("sidebarToggle")
+        self.btn_sidebar.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.btn_sidebar.setAutoRaise(True)
+        self.btn_sidebar.setFixedSize(22, 24)
+        self.btn_sidebar.setCursor(Qt.PointingHandCursor)
+        self.btn_sidebar.clicked.connect(lambda: self._toggle_left_panel())
+        layout.addWidget(self.btn_sidebar, 0, Qt.AlignHCenter)
+        layout.addStretch(1)
+        self._update_sidebar_button(True)
+        return strip
+
+    def _update_sidebar_button(self, expanded: bool) -> None:
+        btn = getattr(self, "btn_sidebar", None)
+        if btn is None:
+            return
+        # 用原生箭头图标，避免中文/符号字体缺字导致按钮空白
+        btn.setArrowType(Qt.LeftArrow if expanded else Qt.RightArrow)
+        btn.setToolTip("隐藏参数面板（Ctrl+B）" if expanded else "显示参数面板（Ctrl+B）")
+        btn.setAccessibleName("隐藏参数面板" if expanded else "显示参数面板")
+
+    def _toggle_left_panel(self, visible: bool | None = None) -> None:
+        """折叠 / 展开左侧参数面板（类似 VS Code 侧边栏）。"""
+        splitter = getattr(self, "splitter", None)
+        if splitter is None:
+            return
+        sizes = splitter.sizes()
+        if len(sizes) < 3:
+            return
+        expanded = bool(self.workbench.isVisible()) and sizes[1] > 0
+        target = (not expanded) if visible is None else bool(visible)
+        total = max(splitter.width(), 1)
+        strip_w = self.left_strip.width() or 26
+
+        if target:
+            width = max(260, int(getattr(self, "_left_width", 300) or 300))
+            width = min(width, max(260, total - strip_w - 480))
+            self.workbench.show()
+            splitter.setCollapsible(1, True)
+            splitter.setSizes([strip_w, width, max(1, total - strip_w - width)])
+        else:
+            if sizes[1] > 0:
+                self._left_width = max(260, sizes[1])
+            self.workbench.hide()
+            splitter.setSizes([strip_w, 0, max(1, total - strip_w)])
+        self._left_collapsed = not target
+        self._update_sidebar_button(target)
+        try:
+            self.config.set("gui.show_left_panel", target)
+        except Exception:
+            pass
+        action = getattr(self, "act_left_panel", None)
+        if action is not None:
+            action.setText("隐藏参数面板" if target else "显示参数面板")
+
+    def _remember_bottom_height(self, pos: int = 0, index: int = 0) -> None:
+        """记录用户拖出的底部面板高度，关闭窗口时写入配置。"""
+        splitter = getattr(self, "right_splitter", None)
+        if splitter is None:
+            return
+        sizes = splitter.sizes()
+        if len(sizes) >= 2 and 0 < sizes[1] < 10000:
+            self._bottom_height = max(120, sizes[1])
+            try:
+                self.config.set("gui.bottom_height", int(self._bottom_height))
+            except Exception:
+                pass
+        # 拖动后按当前窗口高度刷新上限，避免上限值滞后卡住后续拖动
+        self._clamp_bottom_height()
+
+    def _clamp_bottom_height(self) -> None:
+        """限制底部面板最大高度，避免向上拖过头把图像区压得不可用。"""
+        splitter = getattr(self, "right_splitter", None)
+        tabs = getattr(self, "bottom_tabs", None)
+        if splitter is None or tabs is None:
+            return
+        # 取「分割器实际高度」与「窗口内容高度」的较大值，防止布局尚未结算时上限被算小
+        height = max(splitter.height(), self.height() - 120)
+        if height <= 0:
+            return
+        limit = max(tabs.minimumHeight(), int(height * 0.72))
+        if tabs.maximumHeight() != limit:
+            tabs.setMaximumHeight(limit)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._clamp_bottom_height()
 
     def _build_menus(self) -> None:
         menubar = self.menuBar()
@@ -431,10 +546,13 @@ class MainWindow(QMainWindow):
         act_zout.triggered.connect(lambda: self.compare.left.zoom_by(1 / 1.2))
         act_log = QAction("显示/隐藏底部面板（日志/指标）", self, shortcut="Ctrl+L")
         act_log.triggered.connect(self._toggle_bottom_panel)
+        self.act_left_panel = QAction("隐藏参数面板", self, shortcut="Ctrl+B")
+        self.act_left_panel.triggered.connect(lambda: self._toggle_left_panel())
         m_view.addAction(act_fit)
         m_view.addAction(act_zin)
         m_view.addAction(act_zout)
         m_view.addSeparator()
+        m_view.addAction(self.act_left_panel)
         m_view.addAction(act_log)
 
         m_exp = menubar.addMenu("实验(&E)")
@@ -480,7 +598,12 @@ class MainWindow(QMainWindow):
     def _install_log_handler(self) -> None:
         self._log_handler = _QtLogHandler()
         logging.getLogger("ipscaling").addHandler(self._log_handler)
-        _log_bridge.message.connect(self._append_log)
+        bridge = _get_log_bridge()
+        try:  # 同一窗口重建时避免重复连接
+            bridge.message.disconnect(self._append_log)
+        except (TypeError, RuntimeError):
+            pass
+        bridge.message.connect(self._append_log)
 
     def _append_log(self, text: str) -> None:
         self.log_view.appendPlainText(text)
@@ -491,9 +614,18 @@ class MainWindow(QMainWindow):
         if not files:
             self.compare.clear()
             self._current_source = None
+            self._current_path = None
+            self._current_reference = None
+            self._current_result = None
             self.lbl_info.setText("尚未处理")
             return
-        self._load_preview(files[0])
+        # 选中的那一张才是当前图：曾固定取 files[0]，导致在列表里切到第 2、3 张后
+        # 左侧预览与「文件/原始尺寸」标签仍停在第一张，与随后处理的图不一致。
+        target = self.workbench.current_file() or files[0]
+        if target == self._current_path and self._current_source is not None:
+            # 同一张图重复通知（新增后选中会各发一次），无需重复解码
+            return
+        self._load_preview(target)
 
     def _load_preview(self, path: str) -> None:
         try:
@@ -505,7 +637,6 @@ class MainWindow(QMainWindow):
         self._current_path = path
         self._current_reference = None
         self._current_result = None
-        self._last_output = None
         self._refresh_preview()
 
     # ------------------------------------------------------------- 预览口径
@@ -600,13 +731,13 @@ class MainWindow(QMainWindow):
                 f"就绪 · 当前算法 {self.registry.get(algorithm).display_name}"
             )
 
-    def _make_jobs(self, paths: List[str], keys: List[str], compare: bool) -> List[Job]:
+    def _make_jobs(self, paths: List[str], keys: List[str]) -> List[Job]:
         wb = self.workbench
         return [
             Job(path=path, key=key, scale=wb.scale, strategy=wb.strategy,
                 params=wb.current_params() if key == wb.current_algorithm() else
                 dict(self.config.algorithm_params(key) or {}),
-                save=wb.auto_save, compare=compare, run_id=self._run_id)
+                save=wb.auto_save, run_id=self._run_id)
             for path in paths
             for key in keys
         ]
@@ -622,6 +753,7 @@ class MainWindow(QMainWindow):
         self._queue.clear()
         self._compare_phase = compare
         self._compare_rows = []
+        self._compare_images.clear()
         self.table.setRowCount(0)
 
     def _run_single(self) -> None:
@@ -633,7 +765,7 @@ class MainWindow(QMainWindow):
         if not key:
             return
         self._start_run(compare=False)
-        self._enqueue(self._make_jobs([path], [key], compare=False))
+        self._enqueue(self._make_jobs([path], [key]))
 
     def _run_batch(self) -> None:
         files = self.workbench.files
@@ -644,7 +776,7 @@ class MainWindow(QMainWindow):
         if not key:
             return
         self._start_run(compare=False)
-        self._enqueue(self._make_jobs(files, [key], compare=False))
+        self._enqueue(self._make_jobs(files, [key]))
         self._status_label.setText(f"批量处理中：共 {len(files)} 张")
 
     def _run_compare_all(self) -> None:
@@ -654,8 +786,7 @@ class MainWindow(QMainWindow):
             return
         keys = [item["key"] for item in self.registry.catalog()]
         self._start_run(compare=True)
-        self._compare_jobs_total = len(keys)
-        self._enqueue(self._make_jobs([path], keys, compare=True))
+        self._enqueue(self._make_jobs([path], keys))
         self._append_log(f"开始对比 {len(keys)} 种算法：{Path(path).name}")
         self._append_log(
             f"参考基准：{reference_basis(self.workbench.scale, self.workbench.strategy)}"
@@ -704,6 +835,9 @@ class MainWindow(QMainWindow):
         }
         self._compare_rows.append(row)
         self._upsert_row(row)
+        if self._compare_phase and not payload["output_path"]:
+            # 对比阶段且未落盘：留一份缩略副本供结尾合成对比图
+            self._compare_images[job.key] = self._thin_copy(image)
 
         # 只有当前正在查看的图像才刷新画布
         if Path(job.path).name == Path(self.workbench.current_file() or "").name:
@@ -723,7 +857,6 @@ class MainWindow(QMainWindow):
             )
             if self.toolbar_view.chk_diff.isChecked():
                 self.compare.right.set_image(self._difference_image(), autofit=True)
-            self._last_output = payload["output_path"]
             self.lbl_info.setText(
                 f"文件：{Path(job.path).name}\n"
                 f"原始尺寸：{payload['source_size'][0]} × {payload['source_size'][1]}\n"
@@ -805,14 +938,21 @@ class MainWindow(QMainWindow):
         panels: List[Tuple[str, np.ndarray]] = []
         if self._current_reference is not None:
             panels.append((self._reference_kind, self._current_reference))
-        if self._current_result is not None:
-            for row in self._compare_rows:
-                label = f"{row['display_name']} {row['elapsed_ms']:.0f}ms"
-                if row.get("output_path"):
-                    try:
-                        panels.append((label, load_image(row["output_path"])))
-                    except Exception:
-                        continue
+        for row in self._compare_rows:
+            label = f"{row['display_name']} {row['elapsed_ms']:.0f}ms"
+            image: Optional[np.ndarray] = None
+            path = row.get("output_path")
+            if path:
+                try:
+                    image = load_image(path)
+                except Exception:
+                    image = None
+            if image is None:
+                # 未开启「自动保存处理后的图像」时结果不落盘，改用内存里的等比缩略副本，
+                # 否则「对比全部」只剩参考基准一张面板，对比图被静默跳过
+                image = self._compare_images.get(row["algorithm"])
+            if image is not None:
+                panels.append((label, image))
         if len(panels) >= 2:
             try:
                 composite = make_comparison(panels)
@@ -823,7 +963,23 @@ class MainWindow(QMainWindow):
                 self._append_log(f"对比图已生成：{target}")
             except Exception:
                 self._append_log("对比图生成失败（不影响结果保存）")
+        elif self._compare_rows:
+            self._append_log("对比图未生成：可用的图像少于 2 张")
+        self._compare_images.clear()
         self._refresh_summary()
+
+    @staticmethod
+    def _thin_copy(image: np.ndarray, max_side: int = 1600) -> np.ndarray:
+        """等比缩小到最长边不超过 max_side 的副本，避免内存里堆积整幅大图。"""
+        if image is None:
+            return image
+        height, width = image.shape[:2]
+        longest = max(height, width)
+        if longest <= max_side:
+            return image
+        ratio = max_side / float(longest)
+        size = (max(1, int(round(width * ratio))), max(1, int(round(height * ratio))))
+        return cv2.resize(image, size, interpolation=cv2.INTER_AREA)
 
     def _difference_image(self) -> np.ndarray:
         left = self._current_reference if self._current_reference is not None else self._current_source
@@ -937,16 +1093,37 @@ class MainWindow(QMainWindow):
         total = splitter.width()
         if total <= 0:
             return
+        strip_w = self.left_strip.width() or 26
+        if getattr(self, "_left_collapsed", False):
+            splitter.setSizes([strip_w, 0, max(1, total - strip_w)])
+            return
         left = max(260, int(total * 0.22))
-        splitter.setSizes([left, max(1, total - left)])
+        left = min(left, max(260, total - strip_w - 480))
+        splitter.setSizes([strip_w, left, max(1, total - strip_w - left)])
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if not getattr(self, "_ratio_applied", False):
             self._ratio_applied = True
             QTimer.singleShot(0, self._apply_splitter_ratio)
+            QTimer.singleShot(0, self._clamp_bottom_height)
+            if not bool(self.config.get("gui.show_left_panel", True)):
+                QTimer.singleShot(0, lambda: self._toggle_left_panel(False))
 
     def closeEvent(self, event) -> None:
+        # 先断开日志转发，避免窗口销毁后仍有信号指向已删除对象
+        try:
+            _get_log_bridge().message.disconnect(self._append_log)
+        except (TypeError, RuntimeError):
+            pass
+        handler = getattr(self, "_log_handler", None)
+        if handler is not None:
+            logging.getLogger("ipscaling").removeHandler(handler)
+        self._remember_bottom_height()
+        try:
+            self.config.set("gui.bottom_height", int(getattr(self, "_bottom_height", 330)))
+        except Exception:
+            pass
         try:
             self.config.save()
         except Exception:

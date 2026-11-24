@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import csv
 import math
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -171,26 +170,6 @@ def compute_metrics(
 # ---------------------------------------------------------------- 计时
 
 
-class Timer:
-    """高精度计时上下文。"""
-
-    def __init__(self) -> None:
-        self.started_at = 0.0
-        self.elapsed_ms = 0.0
-
-    def __enter__(self) -> "Timer":
-        self.started_at = time.perf_counter()
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        self.elapsed_ms = (time.perf_counter() - self.started_at) * 1000.0
-        return False
-
-    @property
-    def elapsed_s(self) -> float:
-        return self.elapsed_ms / 1000.0
-
-
 @dataclass
 class BenchmarkRecord:
     """一次算法执行的完整记录，供右侧指标面板与报告导出使用。"""
@@ -204,21 +183,7 @@ class BenchmarkRecord:
     metrics: Dict[str, float] = field(default_factory=dict)
     notes: List[str] = field(default_factory=list)
     tiles: int = 0
-    peak_memory_mb: float = 0.0
     output_path: Optional[str] = None
-
-    def as_row(self) -> Dict[str, Any]:
-        row: Dict[str, Any] = {
-            "算法": self.display_name,
-            "倍率": self.scale,
-            "输入": f"{self.input_size[0]}x{self.input_size[1]}",
-            "输出": f"{self.output_size[0]}x{self.output_size[1]}",
-            "耗时(ms)": round(self.elapsed_ms, 2),
-            "分块数": self.tiles,
-        }
-        for key, value in self.metrics.items():
-            row[key] = "-" if value is None or (isinstance(value, float) and math.isnan(value)) else round(value, 4)
-        return row
 
 
 # ---------------------------------------------------------------- 对比图
@@ -259,15 +224,6 @@ def draw_label(image: np.ndarray, text: str, origin: Tuple[int, int] = (8, 6),
             return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
     cv2.putText(canvas, text.encode("ascii", "ignore").decode() or "view", (origin[0], origin[1] + 16),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1, cv2.LINE_AA)
-    return canvas
-
-
-def draw_roi(image: np.ndarray, roi: Tuple[int, int, int, int],
-             color: Tuple[int, int, int] = (76, 154, 255), thickness: int = 2) -> np.ndarray:
-    """绘制感兴趣区域矩形（x, y, w, h）。"""
-    x, y, w, h = [int(v) for v in roi]
-    canvas = image.copy()
-    cv2.rectangle(canvas, (x, y), (x + w, y + h), color, thickness, cv2.LINE_AA)
     return canvas
 
 

@@ -369,11 +369,53 @@ QScrollArea {{
 /* ---------- 其他 ---------- */
 QSplitter::handle {{
     background: {BORDER};
-    width: 2px;
+    width: 6px;
 }}
 
-QSplitter::handle:hover {{
+QSplitter::handle:horizontal {{
+    width: 6px;
+}}
+
+/* 上下分割条：加高加宽，便于鼠标上下拖动底部日志/指标面板 */
+QSplitter::handle:vertical {{
+    height: 6px;
+    background: {BORDER};
+}}
+
+QSplitter::handle:hover, QSplitter::handle:pressed {{
     background: {ACCENT};
+}}
+
+/* ---------- 左侧折叠条（VS Code 风格侧边栏开关） ---------- */
+#sidebarStrip {{
+    background: {BG_PANEL};
+    border-right: 1px solid {BORDER};
+}}
+
+#sidebarStripLabel {{
+    color: {TEXT_MUTED};
+    font-size: 11px;
+    letter-spacing: 1px;
+}}
+
+QToolButton#sidebarToggle {{
+    background: {BG_INPUT};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    color: {ACCENT};
+    font-size: 11px;
+    padding: 0px;
+}}
+
+QToolButton#sidebarToggle:hover {{
+    background: {ACCENT};
+    border-color: {ACCENT_PRESSED};
+    color: {TEXT_ON_ACCENT};
+}}
+
+QToolButton#sidebarToggle:pressed {{
+    background: {ACCENT_PRESSED};
+    color: {TEXT_ON_ACCENT};
 }}
 
 QStatusBar {{

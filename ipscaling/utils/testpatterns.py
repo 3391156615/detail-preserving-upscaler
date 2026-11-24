@@ -87,7 +87,6 @@ def photo(size: int = SIZE) -> np.ndarray:
     """程序化合成的自然图像（渐变天空 + 主体色块 + 细节 + 噪声）。"""
     rng = np.random.default_rng(2026)
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
-    u = xx / max(1, size - 1)
     v = yy / max(1, size - 1)
 
     # 天空/背景渐变

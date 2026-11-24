@@ -14,7 +14,6 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 def project_root() -> Path:
@@ -22,7 +21,8 @@ def project_root() -> Path:
     if getattr(sys, "frozen", False):
         # 打包后：exe 所在目录即项目根
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[1]
+    # 本文件就位于项目根目录下，父级即根目录（此前误用 parents[1]，会跳到上一级 F:\code）
+    return Path(__file__).resolve().parent
 
 
 def ensure_sys_path() -> Path:
@@ -85,15 +85,3 @@ def configure_qt_environment() -> None:
     """在创建 QApplication 之前设置 DPI 相关环境变量。"""
     os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
-
-
-def open_path(path: Path) -> None:
-    """用系统默认程序打开路径（Windows 资源管理器）。"""
-    if not path.exists():
-        return
-    if sys.platform.startswith("win"):
-        os.startfile(str(path))  # noqa: S606
-    else:
-        import subprocess
-
-        subprocess.Popen(["xdg-open", str(path)])

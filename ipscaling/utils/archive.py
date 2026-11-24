@@ -91,17 +91,6 @@ def save_image(
         return None
 
 
-def save_array(root: Path | str, sub_dir: str, filename: str, image: np.ndarray) -> Optional[Path]:
-    try:
-        directory = Path(root) / safe_name(sub_dir, "misc")
-        directory.mkdir(parents=True, exist_ok=True)
-        target = unique_path(directory, safe_name(Path(filename).stem), Path(filename).suffix or ".png")
-        ok = cv2.imwrite(str(target), image)
-        return target if ok else None
-    except (OSError, cv2.error):
-        return None
-
-
 def save_report(
     root: Path | str,
     rows: Sequence[Dict[str, Any]],

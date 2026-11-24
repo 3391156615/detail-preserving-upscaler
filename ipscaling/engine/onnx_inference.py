@@ -96,13 +96,6 @@ class OnnxSuperResolutionEngine(BaseEngine):
             self._models = discover_models()
         return self._models
 
-    def refresh_models(self) -> List[Dict[str, Any]]:
-        self._models = discover_models()
-        return self._models
-
-    def model_names(self) -> List[str]:
-        return [model["name"] for model in self.models]
-
     def _load_session(self, model_path: str):
         if model_path in self._sessions:
             return self._sessions[model_path]

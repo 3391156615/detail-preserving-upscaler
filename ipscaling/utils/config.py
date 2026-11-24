@@ -12,7 +12,6 @@ from __future__ import annotations
 import copy
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -52,6 +51,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         "font_scale": 1.0,
         "window": {"width": 1480, "height": 920},
         "show_log_panel": True,
+        "show_left_panel": True,
+        "bottom_height": 330,
         "auto_preview": True,
     },
     "output": {
@@ -281,9 +282,6 @@ class Config:
     def __contains__(self, key: str) -> bool:
         return self.get(key, KeyError) is not KeyError
 
-    def as_dict(self) -> Dict[str, Any]:
-        return copy.deepcopy(self._data)
-
     # -- 读取
     def get(self, path: str, default: Any = None) -> Any:
         node: Any = self._data
@@ -322,21 +320,7 @@ class Config:
     def save(self, path: Path | str = USER_CONFIG_FILE) -> bool:
         return write_json(path, self._data)
 
-    def save_defaults(self, path: Path | str = DEFAULT_CONFIG_FILE) -> bool:
-        return write_json(path, DEFAULT_SETTINGS)
-
 
 def default_config() -> Config:
     return Config()
-
-
-def results_root(config: Optional[Config] = None) -> Path:
-    root_value = (config.get("output.root", "results") if config else "results") or "results"
-    root = Path(str(root_value))
-    return root if root.is_absolute() else PROJECT_ROOT / root
-
-
-def python_executable() -> str:
-    """当前解释器路径（用于子进程启动 GUI）。"""
-    return sys.executable
 

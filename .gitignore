@@ -13,6 +13,7 @@ data/
 dist/
 delivery/
 temp_pytest/
+output/
 *.log
 
 # 本地锁、备份与临时文件

@@ -4,7 +4,7 @@
 1. ``ImageViewer``：基于 QGraphicsView 的画布，支持滚轮缩放（以光标为中心）、
    拖拽平移、双击自适应、ROI 框选。
 2. ``CompareView``：左右两个画布同步缩放/平移，用于原图与结果对比。
-3. ``DifferenceView``：结果与参考的差异可视化（伪彩）。
+3. ``make_difference_image``：结果与参考的差异可视化（伪彩），供右侧画布切换显示。
 
 所有画布共享同一份 numpy(BGR/RGB, uint8) -> QImage 的极速转换，避免逐像素拷贝。
 """
@@ -15,7 +15,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 from PyQt5.QtCore import QPoint, QRectF, Qt, pyqtSignal
-from PyQt5.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PyQt5.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPixmap
 from PyQt5.QtWidgets import (
     QFrame,
     QGraphicsPixmapItem,
@@ -74,7 +74,7 @@ class ImageViewer(QGraphicsView):
     MIN_SCALE = 0.02
     MAX_SCALE = 32.0
 
-    def __init__(self, title: str = "", pick_roi: bool = True, parent=None) -> None:
+    def __init__(self, pick_roi: bool = True, parent=None) -> None:
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
@@ -94,8 +94,6 @@ class ImageViewer(QGraphicsView):
         self._drag_origin: Optional[QPoint] = None
         self._syncing = False
         self._pick_roi = pick_roi
-        self._image_size: Tuple[int, int] = (0, 0)
-        self._title = title
 
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         self.setBackgroundBrush(_VIEW_BG)
@@ -120,24 +118,23 @@ class ImageViewer(QGraphicsView):
         if pixmap.isNull():
             self.clear()
             return
+        # 换图后旧 ROI 框记录的是上一张图的坐标，必须先移除，否则会残留在新图上
+        self.clear_roi()
+        self._drag_origin = None
         self._item.setPixmap(pixmap)
         self._scene.setSceneRect(QRectF(pixmap.rect()))
         self._border_item.setRect(QRectF(pixmap.rect()))
         self._border_item.setVisible(True)
-        self._image_size = (image.shape[1], image.shape[0])
         if autofit:
             self.fit_to_window()
 
     def clear(self) -> None:
+        # 曾经只把引用置空未从场景移除，导致清空画布/换图后 ROI 框留在画面上
+        self.clear_roi()
+        self._drag_origin = None
         self._item.setPixmap(QPixmap())
         self._scene.setSceneRect(QRectF(0, 0, 1, 1))
         self._border_item.setVisible(False)
-        self._image_size = (0, 0)
-        self._roi_item = None
-
-    @property
-    def image_size(self) -> Tuple[int, int]:
-        return self._image_size
 
     def has_image(self) -> bool:
         return not self._item.pixmap().isNull()
@@ -235,9 +232,6 @@ class ImageViewer(QGraphicsView):
         event.accept()
 
     # ------------------------------------------------------------------ ROI
-    def set_pick_roi(self, enabled: bool) -> None:
-        self._pick_roi = enabled
-
     def mousePressEvent(self, event) -> None:
         if (
             self._pick_roi
@@ -317,8 +311,8 @@ class CompareView(QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.left = ImageViewer("原图")
-        self.right = ImageViewer("结果")
+        self.left = ImageViewer()
+        self.right = ImageViewer()
         self._left_box = _TitledViewer("原图 / 输入", self.left)
         self._right_box = _TitledViewer("结果 / 输出", self.right)
 

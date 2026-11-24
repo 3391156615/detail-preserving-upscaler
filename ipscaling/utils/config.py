@@ -48,7 +48,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "gui": {
         "theme": "light",
         "accent": "#1a6fd4",
-        "font_scale": 1.0,
+        # 界面基准字号（px）：由顶部“视图 → 界面字体大小”调节并持久化
+        "font_size": 12,
         "window": {"width": 1480, "height": 920},
         "show_log_panel": True,
         "show_left_panel": True,

@@ -299,9 +299,15 @@ class _TitledViewer(QWidget):
         layout.addWidget(self.title_label)
         layout.addWidget(viewer, 1)
         self.viewer = viewer
+        self.apply_font_metrics()
 
     def set_title(self, text: str) -> None:
         self.title_label.setText(text)
+
+    def apply_font_metrics(self) -> None:
+        """按当前字体度量重算标题栏高度，避免调节界面字号后文字被裁切。"""
+        metrics = self.title_label.fontMetrics()
+        self.title_label.setFixedHeight(max(24, metrics.height() + 10))
 
 
 class CompareView(QWidget):
@@ -351,6 +357,11 @@ class CompareView(QWidget):
     def clear(self) -> None:
         self.left.clear()
         self.right.clear()
+
+    def apply_font_metrics(self) -> None:
+        """界面字号变化后同步两块视图的标题栏高度。"""
+        self._left_box.apply_font_metrics()
+        self._right_box.apply_font_metrics()
 
 
 def make_difference_image(reference: np.ndarray, result: np.ndarray, amplify: float = 4.0) -> np.ndarray:

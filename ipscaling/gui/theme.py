@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 ACCENT = "#1a6fd4"
 ACCENT_HOVER = "#2f84e6"
 ACCENT_PRESSED = "#1257ad"
@@ -30,10 +32,54 @@ TEXT_ON_ACCENT = "#ffffff"
 BORDER = "#b9d3ee"
 BORDER_STRONG = "#93b8dd"
 
-LIGHT_QSS = f"""
+# ---------------------------------------------------------------- 字号
+# 界面基准字号（px）：历史版本为 13px，用户反馈偏大，默认下调到 12px。
+# 所有局部字号都由基准推导（见 font_sizes），因此“视图 → 界面字体大小”
+# 调节一处即可整体放大/缩小，且保持原有层级比例不变。
+DEFAULT_FONT_SIZE = 12
+FONT_SIZE_MIN = 10
+FONT_SIZE_MAX = 18
+
+# 顶部菜单可选的快捷档位：(字号 px, 名称)
+FONT_SIZE_PRESETS = ((11, "小"), (12, "标准"), (13, "较大"), (14, "大"))
+
+
+def clamp_font_size(font_size: Any) -> int:
+    """把外部传入的字号收敛到 [FONT_SIZE_MIN, FONT_SIZE_MAX] 的安全区间。"""
+    try:
+        value = round(float(font_size))
+    except (TypeError, ValueError):
+        return DEFAULT_FONT_SIZE
+    return max(FONT_SIZE_MIN, min(FONT_SIZE_MAX, value))
+
+
+def font_sizes(font_size: int = DEFAULT_FONT_SIZE) -> dict[str, int]:
+    """由基准字号推导 QSS 中各类文本的字号，保持“标题 > 正文 > 辅助”的层级。
+
+    历史版本以 13px 为基准（正文 13 / 标题 15 / 主按钮 14 / 辅助 12 / 侧栏 11 / 进度 10）。
+    现在基准下调为 12px，且主按钮不再额外放大（强调交由蓝底白字承担），
+    实际为：正文 12 / 标题 14 / 主按钮 12 / 辅助 11 / 侧栏 10 / 进度 9。
+    """
+    base = clamp_font_size(font_size)
+
+    def step(delta: int) -> int:
+        return max(8, base + delta)
+
+    return {
+        "FS_BASE": base,          # 全局正文
+        "FS_TITLE": step(2),      # 面板标题
+        "FS_PRIMARY": step(0),    # 主按钮（与正文同号，强调靠配色）
+        "FS_SMALL": step(-1),     # 提示/表头/视图标题
+        "FS_LOG": step(-1),       # 日志等宽字体
+        "FS_TINY": step(-2),      # 侧边栏
+        "FS_MICRO": step(-3),     # 进度条
+    }
+
+
+_QSS_TEMPLATE = """
 * {{
     font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
-    font-size: 13px;
+    font-size: {FS_BASE}px;
     outline: none;
 }}
 
@@ -95,7 +141,7 @@ QWidget {{
 }}
 
 #panelTitle {{
-    font-size: 15px;
+    font-size: {FS_TITLE}px;
     font-weight: 600;
     padding: 2px 0 6px 0;
     color: {TEXT_PRIMARY};
@@ -112,19 +158,19 @@ QWidget {{
 
 #mutedLabel {{
     color: {TEXT_SECONDARY};
-    font-size: 12px;
+    font-size: {FS_SMALL}px;
 }}
 
 #hintLabel {{
     color: {TEXT_MUTED};
-    font-size: 12px;
+    font-size: {FS_SMALL}px;
 }}
 
 #viewerTitle {{
     background: {BG_HEADER};
     color: {TEXT_PRIMARY};
     padding-left: 10px;
-    font-size: 12px;
+    font-size: {FS_SMALL}px;
     font-weight: 600;
     border-left: 3px solid {ACCENT};
 }}
@@ -178,7 +224,7 @@ QPushButton#primaryButton {{
     border: 1px solid {ACCENT_PRESSED};
     color: {TEXT_ON_ACCENT};
     font-weight: 600;
-    font-size: 14px;
+    font-size: {FS_PRIMARY}px;
 }}
 
 QPushButton#primaryButton:hover {{
@@ -310,7 +356,7 @@ QHeaderView::section {{
     border-bottom: 1px solid {BORDER_STRONG};
     border-right: 1px solid #e2edf9;
     padding: 6px 4px;
-    font-size: 12px;
+    font-size: {FS_SMALL}px;
     font-weight: 600;
 }}
 
@@ -394,7 +440,7 @@ QSplitter::handle:hover, QSplitter::handle:pressed {{
 
 #sidebarStripLabel {{
     color: {TEXT_MUTED};
-    font-size: 11px;
+    font-size: {FS_TINY}px;
     letter-spacing: 1px;
 }}
 
@@ -403,7 +449,7 @@ QToolButton#sidebarToggle {{
     border: 1px solid {BORDER};
     border-radius: 4px;
     color: {ACCENT};
-    font-size: 11px;
+    font-size: {FS_TINY}px;
     padding: 0px;
 }}
 
@@ -478,7 +524,7 @@ QDockWidget::title {{
     color: #22405c;
     border: none;
     font-family: Consolas, "Cascadia Mono", monospace;
-    font-size: 12px;
+    font-size: {FS_LOG}px;
     padding: 6px;
 }}
 
@@ -489,7 +535,7 @@ QProgressBar {{
     height: 12px;
     text-align: center;
     color: {TEXT_PRIMARY};
-    font-size: 10px;
+    font-size: {FS_MICRO}px;
 }}
 
 QProgressBar::chunk {{
@@ -513,13 +559,56 @@ QMessageBox QLabel {{
 }}
 """
 
+# QSS 模板引用的颜色变量（与上方常量一一对应）
+_QSS_COLORS = {
+    "ACCENT": ACCENT,
+    "ACCENT_HOVER": ACCENT_HOVER,
+    "ACCENT_PRESSED": ACCENT_PRESSED,
+    "ACCENT_SOFT": ACCENT_SOFT,
+    "BG_BASE": BG_BASE,
+    "BG_PANEL": BG_PANEL,
+    "BG_ELEVATED": BG_ELEVATED,
+    "BG_INPUT": BG_INPUT,
+    "BG_INPUT_HOVER": BG_INPUT_HOVER,
+    "BG_ALT_ROW": BG_ALT_ROW,
+    "BG_HEADER": BG_HEADER,
+    "BG_LOG": BG_LOG,
+    "TEXT_PRIMARY": TEXT_PRIMARY,
+    "TEXT_SECONDARY": TEXT_SECONDARY,
+    "TEXT_MUTED": TEXT_MUTED,
+    "TEXT_ON_ACCENT": TEXT_ON_ACCENT,
+    "BORDER": BORDER,
+    "BORDER_STRONG": BORDER_STRONG,
+}
+
+
+def build_qss(font_size: int = DEFAULT_FONT_SIZE) -> str:
+    """按基准字号生成完整样式表（颜色不变，仅字号随 font_size 缩放）。"""
+    values = dict(_QSS_COLORS)
+    values.update(font_sizes(font_size))
+    return _QSS_TEMPLATE.format(**values)
+
+
+# 默认字号下的样式表（历史代码/脚本按 LIGHT_QSS 直接引用时仍可用）
+LIGHT_QSS = build_qss()
+
 # 兼容旧命名（历史代码/脚本可能按 DARK_QSS 引用）
 DARK_QSS = LIGHT_QSS
 
 
-def apply_theme(app) -> None:
-    """给 QApplication 应用蓝白浅色主题与调色板（函数名保持向后兼容）。"""
-    from PyQt5.QtGui import QColor, QPalette
+def apply_theme(app, font_size: int = DEFAULT_FONT_SIZE) -> None:
+    """给 QApplication 应用蓝白浅色主题与调色板（函数名保持向后兼容）。
+
+    font_size 为界面基准字号（px），用于生成样式表并同步 QApplication 默认字体，
+    使菜单、原生对话框等 QSS 覆盖不到的位置也跟随“视图 → 界面字体大小”一起变化。
+    """
+    from PyQt5.QtGui import QColor, QFont, QPalette
+
+    size = clamp_font_size(font_size)
+
+    app_font = QFont("Microsoft YaHei UI")
+    app_font.setPixelSize(font_sizes(size)["FS_BASE"])
+    app.setFont(app_font)
 
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(BG_BASE))
@@ -539,4 +628,4 @@ def apply_theme(app) -> None:
     palette.setColor(QPalette.Disabled, QPalette.Text, QColor("#8ba3ba"))
     palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#8ba3ba"))
     app.setPalette(palette)
-    app.setStyleSheet(LIGHT_QSS)
+    app.setStyleSheet(build_qss(size))

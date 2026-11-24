@@ -267,6 +267,7 @@ class Workbench(QWidget):
 
         self.file_list = QListWidget()
         # 输入源列表不再无限膨胀：给一个上限，避免"输入源"独占左侧面板大部分高度
+        # 具体高度由 apply_font_metrics() 按当前字号换算（约 3 行）
         self.file_list.setMinimumHeight(80)
         self.file_list.setMaximumHeight(84)
         self.file_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -284,6 +285,13 @@ class Workbench(QWidget):
         self.btn_clear.clicked.connect(self.clear_files)
         self.file_list.itemSelectionChanged.connect(self._on_selection_changed)
         self._body.addWidget(group)
+
+    def apply_font_metrics(self) -> None:
+        """按当前字体度量重算输入源列表高度（约 3 行），避免调节字号后行被裁切。"""
+        metrics = self.file_list.fontMetrics()
+        line = max(16, metrics.height() + 4)
+        self.file_list.setMinimumHeight(int(max(80, line * 2)))
+        self.file_list.setMaximumHeight(int(max(84, line * 3)))
 
     def _pick_files(self) -> None:
         patterns = " ".join(f"*{suffix}" for suffix in sorted(IMAGE_SUFFIXES))

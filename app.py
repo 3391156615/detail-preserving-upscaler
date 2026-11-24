@@ -46,7 +46,6 @@ def main(argv=None) -> int:
 
     try:
         from PyQt5.QtCore import Qt
-        from PyQt5.QtGui import QFont
         from PyQt5.QtWidgets import QApplication
 
         # 高分屏支持必须在 QApplication 创建前声明
@@ -55,11 +54,10 @@ def main(argv=None) -> int:
 
         app = QApplication.instance() or QApplication(argv)
         app.setApplicationName("Detail-Preserving Image Upscaling System")
-        app.setFont(QFont("Microsoft YaHei UI", 9))
+        # 界面字号取自配置（gui.font_size），由顶部“视图 → 界面字体大小”调节并持久化
+        from ipscaling.gui.theme import DEFAULT_FONT_SIZE, apply_theme, clamp_font_size
 
-        from ipscaling.gui.theme import apply_theme
-
-        apply_theme(app)
+        apply_theme(app, clamp_font_size(ctx.config.get("gui.font_size", DEFAULT_FONT_SIZE)))
 
         from ipscaling.gui.main_window import MainWindow
 

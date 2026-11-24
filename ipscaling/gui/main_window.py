@@ -17,9 +17,12 @@ from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QAction,
+    QActionGroup,
+    QApplication,
     QDialog,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -43,6 +46,14 @@ from ipscaling.gui.viewer import (
     ImageViewer,
     ViewerToolbar,
     make_difference_image,
+)
+from ipscaling.gui.theme import (
+    DEFAULT_FONT_SIZE,
+    FONT_SIZE_MAX,
+    FONT_SIZE_MIN,
+    FONT_SIZE_PRESETS,
+    apply_theme,
+    clamp_font_size,
 )
 from ipscaling.gui.wheel_guard import install_wheel_guard
 from ipscaling.gui.workbench import Workbench
@@ -231,6 +242,8 @@ class MainWindow(QMainWindow):
         ensure_directories()
         self.config = config or Config.load()
         self.registry = registry or EngineRegistry(self.config)
+        # 界面基准字号：启动时与配置保持一致，菜单调节后立即生效并写回配置
+        self._font_size = clamp_font_size(self.config.get("gui.font_size", DEFAULT_FONT_SIZE))
 
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(1)
@@ -253,6 +266,8 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._build_menus()
+        # 按当前字号校准标题栏/输入源列表等依赖字体度量的固定高度
+        self._refresh_font_metrics()
         self._install_log_handler()
         self._update_status_summary()
 
@@ -369,8 +384,8 @@ class MainWindow(QMainWindow):
         self.btn_report = QPushButton("导出报告")
         self.btn_report.setObjectName("primaryButton")
         self.btn_report.setToolTip("导出本次实验的指标报告到 results/")
-        self.btn_open_results = QPushButton("打开 results/")
-        self.btn_open_results.setToolTip("打开 results/ 结果目录")
+        self.btn_open_results = QPushButton("打开输出结果")
+        self.btn_open_results.setToolTip("打开输出结果目录（results/）")
         side_layout.addWidget(self.btn_report)
         side_layout.addWidget(self.btn_open_results)
 
@@ -554,6 +569,8 @@ class MainWindow(QMainWindow):
         m_view.addSeparator()
         m_view.addAction(self.act_left_panel)
         m_view.addAction(act_log)
+        m_view.addSeparator()
+        self._build_font_menu(m_view)
 
         m_exp = menubar.addMenu("实验(&E)")
         act_all = QAction("一键对比全部算法", self, shortcut="F5")
@@ -574,6 +591,75 @@ class MainWindow(QMainWindow):
         act_about = QAction("关于", self)
         act_about.triggered.connect(self._show_about)
         m_help.addAction(act_about)
+
+    # ------------------------------------------------------------- 界面字号
+    def _build_font_menu(self, parent_menu) -> None:
+        """在“视图”菜单下挂载界面字体大小子菜单（预设档位 + 自定义）。"""
+        self.m_font = parent_menu.addMenu("界面字体大小")
+        self._font_group = QActionGroup(self)
+        self._font_group.setExclusive(True)
+        self._font_actions: list[QAction] = []
+        for size, label in FONT_SIZE_PRESETS:
+            action = QAction(f"{label}（{size}px）", self, checkable=True)
+            action.setData(int(size))
+            action.triggered.connect(lambda _checked=False, value=size: self._set_font_size(value))
+            self._font_group.addAction(action)
+            self.m_font.addAction(action)
+            self._font_actions.append(action)
+        self.m_font.addSeparator()
+        act_up = QAction("增大字号", self)
+        act_up.triggered.connect(lambda: self._set_font_size(self._font_size + 1))
+        act_down = QAction("减小字号", self)
+        act_down.triggered.connect(lambda: self._set_font_size(self._font_size - 1))
+        act_reset = QAction("恢复默认字号", self)
+        act_reset.triggered.connect(lambda: self._set_font_size(DEFAULT_FONT_SIZE))
+        act_custom = QAction("自定义字号…", self)
+        act_custom.triggered.connect(self._ask_font_size)
+        for action in (act_up, act_down, act_reset):
+            self.m_font.addAction(action)
+        self.m_font.addSeparator()
+        self.m_font.addAction(act_custom)
+        self._sync_font_actions()
+
+    def _sync_font_actions(self) -> None:
+        """同步预设档位的勾选状态：与当前字号一致才勾选。"""
+        for action in getattr(self, "_font_actions", []):
+            action.setChecked(int(action.data()) == int(self._font_size))
+
+    def _ask_font_size(self) -> None:
+        """弹窗输入自定义字号（px）。"""
+        size, ok = QInputDialog.getInt(
+            self,
+            "界面字体大小",
+            f"请输入界面字号（{FONT_SIZE_MIN}-{FONT_SIZE_MAX} px）：",
+            int(self._font_size),
+            FONT_SIZE_MIN,
+            FONT_SIZE_MAX,
+            1,
+        )
+        if ok:
+            self._set_font_size(int(size))
+
+    def _set_font_size(self, size: int) -> None:
+        """应用界面基准字号：重建样式表、刷新依赖字体的固定高度并持久化到配置。"""
+        size = clamp_font_size(size)
+        self._font_size = size
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, size)
+        self._sync_font_actions()
+        self._refresh_font_metrics()
+        self.config.set("gui.font_size", int(size))
+        try:
+            self.config.save()
+        except OSError:  # 配置目录只读等极端情况：不阻断界面操作
+            _LOG.warning("界面字号写入配置失败，本次仅内存生效", exc_info=True)
+        self.statusBar().showMessage(f"界面字号已调整为 {size}px", 4000)
+
+    def _refresh_font_metrics(self) -> None:
+        """字号变化后重算依赖字体度量的固定高度，避免文字被裁切。"""
+        self.compare.apply_font_metrics()
+        self.workbench.apply_font_metrics()
 
     def _connect_signals(self) -> None:
         wb = self.workbench

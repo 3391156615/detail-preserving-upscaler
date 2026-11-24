@@ -3,13 +3,13 @@
   "gui": {
     "theme": "light",
     "accent": "#1a6fd4",
-    "font_scale": 1.0,
     "window": {
       "width": 1480,
       "height": 920
     },
     "show_log_panel": true,
-    "auto_preview": true
+    "auto_preview": true,
+    "font_size": 12
   },
   "output": {
     "root": "results",

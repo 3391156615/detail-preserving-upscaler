@@ -15,8 +15,11 @@ delivery/
 temp_pytest/
 *.log
 
-# 本地锁与临时文件
+# 本地锁、备份与临时文件
 .setup.lock
+*.bak
+*.bak_*
+*.orig
 temp_*.txt
 temp_*.log
 
